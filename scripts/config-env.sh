@@ -15,4 +15,4 @@ export XDG_DATA_HOME="/root/.local/share"
 export XDG_CACHE_HOME="/root/.cache"
 export SPACEMACSDIR="$XDG_CONFIG_HOME/spacemacs.d"
 
-
+pf

@@ -4,16 +4,16 @@ set -e
 
 mkdir $HOME/deps && cd $HOME/deps
 
-# # Cabal
-# sudo apt-get install -y ghc cabal-install
-# cabal update
+# Cabal
+sudo apt-get install -y ghc cabal-install
+cabal update
 
-# # Shellcheck
-# git clone https://github.com/koalaman/shellcheck.git
-# cd shellcheck
-# cabal install
-# export PATH="$HOME/.cabal/bin:$PATH"
-# echo "PATH=$HOME/.cabal/bin:$PATH" >>$HOME/.bashrc
+# Shellcheck
+git clone https://github.com/koalaman/shellcheck.git
+cd shellcheck
+cabal install
+export PATH="$HOME/.cabal/bin:$PATH"
+echo "PATH=$HOME/.cabal/bin:$PATH" >>$HOME/.bashrc
 
 # Node
 sudo apt-get install -y curl
@@ -31,7 +31,7 @@ export PATH=$HOME/.config/nvm/versions/node/v20.13.1/bin:$PATH
 git clone https://github.com/rcjsuen/dockerfile-language-server.git
 cd dockerfile-language-server
 npm install
-npm audit fix
+npm audit fixg
 npm run build
 npm test
 npm install -g dockerfile-language-server-nodejs
