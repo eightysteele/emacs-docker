@@ -3,6 +3,7 @@
 set -e
 
 load_user_env() {
+	source ~/.bashrc
 	export $(grep -v '^#' ~/.env | xargs)
 }
 
@@ -16,8 +17,8 @@ update_user_env() {
 
 update_user_path() {
 	local path="$1"
-	export PATH="$path:$PATH"
-	echo "export PATH=$path:$PATH" >>~/.bashrc
+	export PATH="$path"
+	echo "export PATH=$path" >>~/.bashrc
 }
 
 ensure_dir() {

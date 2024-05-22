@@ -73,6 +73,7 @@ entrypoint() {
 		exit 1
 	fi
 
+	# TODO: docker images -q | grep -v $(docker images emacs-docker:dev -q) | xargs docker rmi -f
 	while getopts ":brh" opt; do
 		case $opt in
 		b)

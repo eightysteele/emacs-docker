@@ -3,8 +3,10 @@
 set -e
 
 SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPTS_DIR/user-env.sh"
 source "$SCRIPTS_DIR/utils.sh"
+source "$PWD/.bashrc"
+
+load_user_env
 
 if [[ -v ORG_TOKEN && -v ORG_REPO ]]; then
 	ensure_dir $XDG_CONFIG_HOME

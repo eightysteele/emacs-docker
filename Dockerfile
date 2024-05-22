@@ -1,10 +1,44 @@
+# syntax=docker/dockerfile:labs
+
+ARG EMACS_VERSION=29.3
+ARG GO_VERSION=1.21.6
+ARG NVM_VERSION=0.39.3
+ARG NODE_VERSION=20.13.1
+ARG XDG_HOME=/opt/xdg
+ARG XDG_BIN_HOME=${XDG_HOME}/.local/bin
+ARG XDG_CONFIG_HOME=${XDG_HOME}/.config
+ARG XDG_DATA_HOME=${XDG_HOME}/.local/share
+ARG XDG_CACHE_HOME=${XDG_HOME}/.cache
+ARG NVM_DIR=${XDG_CONFIG_HOME}/nvm
+ARG ORGMODE_REPO
+ARG ORGMODE_TOKEN
+ARG SPACEMACS_D_REPO
+
 ################################################################################
 FROM ubuntu:jammy AS base
 ################################################################################
 
-ARG DEBIAN_FRONTEND=noninteractive
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
+ARG EMACS_VERSION
+ARG GO_VERSION
+ARG NVM_VERSION
+ARG NODE_VERSION
+ARG XDG_HOME
+ARG XDG_BIN_HOME
+ARG XDG_CONFIG_HOME
+ARG XDG_DATA_HOME
+ARG XDG_CACHE_HOME
+ARG NVM_DIR
+ARG ORGMODE_REPO
+ARG ORGMODE_TOKEN
+ARG SPACEMACS_D_REPO
+ENV DEBIAN_FRONTEND=noninteractive
+RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
+    --mount=target=/var/cache/apt,type=cache,sharing=locked \
+    bash -x <<"EOF"
+set -eu
+rm -f /etc/apt/apt.conf.d/docker-clean \
+apt-get update
+apt-get install -y --no-install-recommends \
     build-essential \
     ca-certificates \
     wget \
@@ -15,7 +49,8 @@ RUN apt-get update \
     libxml2-dev \
     xorg-dev \
     libgtk-3-dev \
-    libharfbuzz-dev libxaw7-dev \
+    libharfbuzz-dev \
+    libxaw7-dev \
     libxpm-dev \
     libpng-dev \
     zlib1g-dev \
@@ -31,125 +66,231 @@ RUN apt-get update \
     libjansson-dev \
     fonts-firacode \
     curl \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    python3-pip \
+    rsync
+wget https://ftp.gnu.org/gnu/gnu-keyring.gpg
+gpg --import gnu-keyring.gpg
+EOF
+
+# ------------------------------------------------------------------------------
+# Setup XDG.
+# https://specifications.freedesktop.org/basedir-spec/basedir-spec-0.6.html
+# ------------------------------------------------------------------------------
+
+RUN bash -x <<"EOF"
+set -eu
+mkdir -p $XDG_HOME \
+    $XDG_CONFIG_HOME \
+    $XDG_DATA_HOME \
+    $XDG_CACHE_HOME \
+    $XDG_BIN_HOME
+EOF
+ENV PATH=${XDG_BIN_HOME}:$PATH
+
+#-------------------------------------------------------------------------------
+# Build emacs.
+#-------------------------------------------------------------------------------
+
+RUN bash -x <<"EOF"
+set -eu
+export TZ=America/Los_Angeles
+dir=emacs-${EMACS_VERSION}
+tar=${dir}.tar.gz
+sig=${dir}.tar.gz.sig
+taru=https://ftp.gnu.org/gnu/emacs/$tar
+sigu=https://ftp.gnu.org/gnu/emacs/$sig
+wget $taru
+wget $sigu
+if ! gpg --verify $sig $tar; then
+    echo "gpg --verify failed"
+	  exit 1
+fi
+tar xf $tar
+pushd $dir
+./configure \
+    --with-xwidgets \
+    --with-x \
+    --with-x-toolkit=gtk3 \
+    --with-imagemagick \
+    --with-json \
+    --with-native-compilation=yes \
+    --with-mailutils
+make -j$(nproc)
+make install
+popd
+rsync -Lr --exclude='emacs-29.3' /usr/local/bin/* $XDG_BIN_HOME/
+EOF
+
+# ------------------------------------------------------------------------------
+# Build Haskell toolchain.
+# https://github.com/haskell/ghcup-hs/tree/master/scripts/bootstrap
+# ------------------------------------------------------------------------------
+
+RUN bash -x <<"EOF"
+set -eu
+export GHCUP_USE_XDG_DIRS=1
+export BOOTSTRAP_HASKELL_NONINTERACTIVE=1
+export BOOTSTRAP_HASKELL_VERBOSE=1
+export BOOTSTRAP_HASKELL_INSTALL_HLS=1
+export BOOTSTRAP_HASKELL_ADJUST_BASHRC=1
+curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | sh
+cabal update
+cabal install cabal-install
+EOF
+
+# ------------------------------------------------------------------------------
+# Build shellcheck.
+# https://github.com/koalaman/shellcheck
+# ------------------------------------------------------------------------------
+
+RUN bash -x <<"EOF"
+set -eu
+git clone https://github.com/koalaman/shellcheck.git
+cd shellcheck
+cabal install ShellCheck
+rsync -Lr ~/.cabal ${XDG_CONFIG_HOME}/
+rsync -Lr ${XDG_CONFIG_HOME}/.cabal/bin/* $XDG_BIN_HOME/
+EOF
+
+# ------------------------------------------------------------------------------
+# Build nvm and node.
+# https://github.com/nvm-sh/nvm
+# ------------------------------------------------------------------------------
+RUN bash -x <<"EOF"
+set -eu
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh | bash
+source ${NVM_DIR}/nvm.sh
+nvm install $NODE_VERSION
+nvm use $NODE_VERSION
+nvm alias default $NODE_VERSION
+rsync -Lr ${NVM_DIR}/versions/node/v${NODE_VERSION}/bin/* ${XDG_BIN_HOME}/
+EOF
+
+# ------------------------------------------------------------------------------
+# Build dockerfile-language-server
+# https://github.com/rcjsuen/dockerfile-language-server
+# ------------------------------------------------------------------------------
+
+RUN bash -x <<"EOF"
+set -eu
+source ${NVM_DIR}/nvm.sh
+git clone https://github.com/rcjsuen/dockerfile-language-server.git
+pushd dockerfile-language-server
+npm install
+npm audit fix
+npm run build
+npm test
+npm install -g dockerfile-language-server-nodejs
+rsync -L bin/docker-langserver ${XDG_BIN_HOME}/
+popd
+EOF
+
+# ------------------------------------------------------------------------------
+# Build hadolint. 
+# https://github.com/hadolint/hadolint
+# ------------------------------------------------------------------------------
+
+RUN bash -x <<"EOF"
+set -eu
+git clone https://github.com/hadolint/hadolint
+pushd hadolint
+mv cabal.project.freeze cabal.project.freeze.backup
+cabal update
+cabal configure
+cabal update
+cabal build
+cabal install
+pushd dist-newstyle/build/x86_64-linux/ghc-9.4.8/hadolint-2.13.0/x/hadolint/build/
+rsync -L hadolint/hadolint ${XDG_BIN_HOME}/
+popd
+popd
+EOF
+
+# ------------------------------------------------------------------------------
+# Install Go.
+# https://github.com/hadolint/hadolint
+# ------------------------------------------------------------------------------
+
+RUN bash -x <<"EOF"
+set -eu
+wget https://golang.org/dl/go${GO_VERSION}.linux-amd64.tar.gz
+tar -C ${XDG_DATA_HOME} -xzf go${GO_VERSION}.linux-amd64.tar.gz
+rsync -Lr ${XDG_DATA_HOME}/go/bin/* ${XDG_BIN_HOME}/
+EOF
+
+# TODO: get these as ARG
+ENV GOROOT=${XDG_DATA_HOME}/go
+ENV GOPATH=${XDG_DATA_HOME}/go
+
+# ------------------------------------------------------------------------------
+# Install shfmt
+# https://github.com/mvdan/sh
+# ------------------------------------------------------------------------------
+
+RUN bash -x <<"EOF"
+set -eu
+go install mvdan.cc/sh/v3/cmd/shfmt@latest
+rsync -L ${XDG_DATA_HOME}/go/bin/shfmt ${XDG_BIN_HOME}/
+EOF
+
+# ------------------------------------------------------------------------------
+# Install bash-language-server
+# https://github.com/bash-lsp/bash-language-server
+# ------------------------------------------------------------------------------
+
+RUN bash -x <<"EOF"
+set -eu
+source ${NVM_DIR}/nvm.sh
+npm i -g bash-language-server
+rsync -L ${NVM_DIR}/versions/node/v${NODE_VERSION}/bin/bash-language-server ${XDG_BIN_HOME}/
+EOF
 
 ################################################################################
-FROM base AS build-emacs
+FROM ubuntu:jammy AS runtime
 ################################################################################
 
-ADD scripts/build-emacs.sh /usr/local/bin
-RUN build-emacs.sh
+ARG XDG_HOME=/opt/xdg
+ARG XDG_BIN_HOME=${XDG_HOME}/.local/bin
 
-################################################################################
-FROM build-emacs AS build-spacemacs
-################################################################################
-
-ARG DEBIAN_FRONTEND=noninteractive
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-    build-essential \
-    ca-certificates \
-    git \
-    curl \
+RUN bash -x <<"EOF"
+set -eu
+apt-get update
+apt-get install -y --no-install-recommends \
+    libxpm4 \
+    libpng16-16 \
+    libjpeg8 \
+    libtiff5 \
+    libgif7 \
+    librsvg2-2 \
+    libwebp7 \
+    libgtk-3-0 \
+    libgccjit0 \
+    libjansson4 \
+    libwebkit2gtk-4.0-37 \
+    libmagickwand-6.q16-6 \
+    libice6 \
+    libsm6 \
     fonts-firacode \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-COPY --from=build-emacs /usr/local /usr/local
-ADD scripts/utils.sh /usr/local/bin
+    curl
+apt-get clean
+rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+EOF
 
-ARG USERNAME
-ARG UID
-ARG GID
-ADD scripts/create-user.sh /usr/local/bin
-RUN create-user.sh
+COPY --from=base \
+    --exclude=ghc* \
+    --exclude=haddock* \
+    --exclude=haskell* \
+    --exclude=hp* \
+    --exclude=hs* \
+    --exclude=run* \
+    --exclude=stack* \
+    --exclude=emacs* \
+    --exclude=ctags* \
+    --exclude=etags* \
+    --exclude=ebrowse* \
+    ${XDG_BIN_HOME} ${XDG_BIN_HOME}
 
-USER $USERNAME
-WORKDIR /home/${USERNAME}
+COPY --from=base /usr/local /usr/local
 
-ARG SPACEMACS_D_REPO
-ADD scripts/build-spacemacs.sh /usr/local/bin
-RUN build-spacemacs.sh
+ENV PATH=$PATH:${XDG_BIN_HOME}
 
-ADD scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-#CMD ["bash"]
-
-# ARG ORG_TOKEN
-# ARG ORG_REPO
-# RUN clone-org-data.sh
-# RUN build-haskell.sh
-
-# USER root
-# ADD build-shellcheck.sh /usr/local/bin
-# USER $USERNAME
-# RUN build-shellcheck.sh
-
-# USER root
-# ADD build-node.sh /usr/local/bin
-# USER $USERNAME
-# RUN build-node.sh
-
-# USER root
-# ADD build-docker-lsp-server.sh /usr/local/bin
-# USER $USERNAME
-# RUN build-docker-lsp-server.sh
-
-# USER root
-# ADD build-ghcup.sh /usr/local/bin
-# USER $USERNAME
-# RUN build-ghcup.sh
-
-
-# ################################################################################
-# FROM base AS setup-user
-# ################################################################################
-
-# ARG USERNAME
-# ARG UID
-# ARG GID
-# ADD setup-user.sh /usr/local/bin
-# RUN setup-user.sh
-
-# ################################################################################
-# FROM setup-user AS build-emacs
-# ################################################################################
-
-# ADD build-emacs.sh /usr/local/bin
-# RUN build-emacs.sh
-
-# ################################################################################
-# FROM build-emacs AS setup-emacs
-# ################################################################################
-
-# ARG ORG_TOKEN
-# ARG ORG_REPO
-# ARG USERNAME
-# ARG HOME_DIR=/home/${USERNAME}
-# USER $USERNAME
-# WORKDIR $HOME_DIR
-# ADD setup-emacs.sh /usr/local/bin
-# RUN setup-emacs.sh
-
-# ################################################################################
-# FROM setup-emacs AS install-spacemacs
-# ################################################################################
-
-# ADD install-spacemacs.sh /usr/local/bin
-# ARG USERNAME
-# ARG HOME_DIR=/home/${USERNAME}
-# WORKDIR $HOME_DIR
-# RUN install-spacemacs.sh
-
-# ################################################################################
-# FROM install-spacemacs AS entrypoint
-# ################################################################################
-
-# ARG USERNAME
-# ARG HOME_DIR=/home/${USERNAME}
-# COPY --from=install-spacemacs ${HOME_DIR}/.emacs.d ${HOME_DIR}/.emacs.d
-# WORKDIR $HOME_DIR
-# ADD install-layer-deps.sh /usr/local/bin
-# USER ${USERNAME}
-# RUN install-layer-deps.sh
-# RUN echo 'export PS1="\u@\h (docker):\w\$ "' >> ${HOME_DIR}/.bashrc
