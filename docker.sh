@@ -33,8 +33,8 @@ docker_build() {
 		--build-arg USERNAME=$USER \
 		--build-arg UID=$(id -u) \
 		--build-arg GID=$(id -g) \
-		--build-arg ORG_TOKEN=$ORG_TOKEN \
-		--build-arg ORG_REPO=$ORG_REPO \
+		--build-arg ORGMODE_TOKEN=$ORG_TOKEN \
+		--build-arg ORGMODE_REPO=$ORG_REPO \
 		--build-arg SPACEMACS_D_REPO=$SPACEMACS_D_REPO \
 		--tag "$TAG" \
 		--file Dockerfile .; then
@@ -53,6 +53,8 @@ docker_run() {
 		-e DISPLAY=$DISPLAY \
 		-v "$REPO_DIR":$HOME/code/github \
 		-v /tmp/.X11-unix:/tmp/.X11-unix \
+		-v ~/.config/emacs:/opt/xdg/.config/emacs \
+		-v ~/.config/spacemacs.d:/opt/xdg/.config/spacemacs.d \
 		-it \
 		"$TAG"; then
 		#/bin/bash; then
@@ -73,7 +75,9 @@ entrypoint() {
 		exit 1
 	fi
 
-	# TODO: docker images -q | grep -v $(docker images emacs-docker:dev -q) | xargs docker rmi -f
+	# TODO: delete all docker images except the local
+	# docker images -q | grep -v $(docker images emacs-docker:dev -q) | xargs docker rmi -f
+	# docker images prune
 	while getopts ":brh" opt; do
 		case $opt in
 		b)

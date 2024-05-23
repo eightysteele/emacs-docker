@@ -1,5 +1,4 @@
-# syntax=docker/dockerfile:labs
-
+# syntax=docker/dockerfile:1.7-labs
 ARG EMACS_VERSION=29.3
 ARG GO_VERSION=1.21.6
 ARG NVM_VERSION=0.39.3
@@ -32,15 +31,13 @@ ARG ORGMODE_REPO
 ARG ORGMODE_TOKEN
 ARG SPACEMACS_D_REPO
 ENV DEBIAN_FRONTEND=noninteractive
-RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
-    --mount=target=/var/cache/apt,type=cache,sharing=locked \
-    bash -x <<"EOF"
+RUN bash -x <<"EOF"
 set -eu
-rm -f /etc/apt/apt.conf.d/docker-clean \
+rm -f /etc/apt/apt.conf.d/docker-clean
 apt-get update
 apt-get install -y --no-install-recommends \
-    build-essential \
     ca-certificates \
+    build-essential \
     wget \
     gnupg \
     git \
@@ -79,7 +76,8 @@ EOF
 
 RUN bash -x <<"EOF"
 set -eu
-mkdir -p $XDG_HOME \
+mkdir -p \
+    $XDG_HOME \
     $XDG_CONFIG_HOME \
     $XDG_DATA_HOME \
     $XDG_CACHE_HOME \
@@ -87,9 +85,9 @@ mkdir -p $XDG_HOME \
 EOF
 ENV PATH=${XDG_BIN_HOME}:$PATH
 
-#-------------------------------------------------------------------------------
-# Build emacs.
-#-------------------------------------------------------------------------------
+# #-------------------------------------------------------------------------------
+# # Build emacs.
+# #-------------------------------------------------------------------------------
 
 RUN bash -x <<"EOF"
 set -eu
@@ -118,7 +116,6 @@ pushd $dir
 make -j$(nproc)
 make install
 popd
-rsync -Lr --exclude='emacs-29.3' /usr/local/bin/* $XDG_BIN_HOME/
 EOF
 
 # ------------------------------------------------------------------------------
@@ -163,7 +160,6 @@ source ${NVM_DIR}/nvm.sh
 nvm install $NODE_VERSION
 nvm use $NODE_VERSION
 nvm alias default $NODE_VERSION
-rsync -Lr ${NVM_DIR}/versions/node/v${NODE_VERSION}/bin/* ${XDG_BIN_HOME}/
 EOF
 
 # ------------------------------------------------------------------------------
@@ -181,7 +177,6 @@ npm audit fix
 npm run build
 npm test
 npm install -g dockerfile-language-server-nodejs
-rsync -L bin/docker-langserver ${XDG_BIN_HOME}/
 popd
 EOF
 
@@ -217,8 +212,6 @@ wget https://golang.org/dl/go${GO_VERSION}.linux-amd64.tar.gz
 tar -C ${XDG_DATA_HOME} -xzf go${GO_VERSION}.linux-amd64.tar.gz
 rsync -Lr ${XDG_DATA_HOME}/go/bin/* ${XDG_BIN_HOME}/
 EOF
-
-# TODO: get these as ARG
 ENV GOROOT=${XDG_DATA_HOME}/go
 ENV GOPATH=${XDG_DATA_HOME}/go
 
@@ -242,20 +235,28 @@ RUN bash -x <<"EOF"
 set -eu
 source ${NVM_DIR}/nvm.sh
 npm i -g bash-language-server
-rsync -L ${NVM_DIR}/versions/node/v${NODE_VERSION}/bin/bash-language-server ${XDG_BIN_HOME}/
 EOF
 
 ################################################################################
 FROM ubuntu:jammy AS runtime
 ################################################################################
 
-ARG XDG_HOME=/opt/xdg
-ARG XDG_BIN_HOME=${XDG_HOME}/.local/bin
-
+ARG XDG_HOME
+ARG XDG_BIN_HOME
+ARG XDG_CONFIG_HOME
+ARG XDG_DATA_HOME
+ARG XDG_CACHE_HOME
+ARG ORGMODE_REPO
+ARG ORGMODE_TOKEN
+ARG SPACEMACS_D_REPO
+ARG NVM_VERSION
+ARG NODE_VERSION
+ARG NVM_DIR
 RUN bash -x <<"EOF"
 set -eu
 apt-get update
 apt-get install -y --no-install-recommends \
+    ca-certificates \
     libxpm4 \
     libpng16-16 \
     libjpeg8 \
@@ -271,7 +272,8 @@ apt-get install -y --no-install-recommends \
     libice6 \
     libsm6 \
     fonts-firacode \
-    curl
+    curl \
+    git
 apt-get clean
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 EOF
@@ -284,13 +286,61 @@ COPY --from=base \
     --exclude=hs* \
     --exclude=run* \
     --exclude=stack* \
-    --exclude=emacs* \
-    --exclude=ctags* \
-    --exclude=etags* \
-    --exclude=ebrowse* \
-    ${XDG_BIN_HOME} ${XDG_BIN_HOME}
-
+    ${XDG_HOME} ${XDG_HOME}
 COPY --from=base /usr/local /usr/local
+COPY --from=base ${NVM_DIR} ${NVM_DIR}
 
-ENV PATH=$PATH:${XDG_BIN_HOME}
+# ------------------------------------------------------------------------------
+# Setup XDG.
+# https://specifications.freedesktop.org/basedir-spec/basedir-spec-0.6.html
+# ------------------------------------------------------------------------------
 
+RUN bash -x <<"EOF"
+set -eu
+mkdir -p \
+$XDG_CONFIG_HOME \
+$XDG_DATA_HOME \
+$XDG_CACHE_HOME
+EOF
+
+# ------------------------------------------------------------------------------
+# Clone spacemacs, spacemacs.d, and the org mode data repo.
+# ------------------------------------------------------------------------------
+
+RUN bash -x <<"EOF"
+set -eu
+export SPACEMACSDIR=${XDG_CONFIG_HOME}/spacemacs.d
+cd ${XDG_CONFIG_HOME}
+# git clone https://github.com/syl20bnr/spacemacs emacs
+# git clone "$SPACEMACS_D_REPO" spacemacs.d
+if [[ -n $ORGMODE_TOKEN && -n $ORGMODE_REPO ]]; then
+	  git clone https://${ORGMODE_TOKEN}@${ORGMODE_REPO}
+fi
+EOF
+
+#-------------------------------------------------------------------------------
+# Initialize spacemacs with first launch to compile packages.
+# https://github.com/syl20bnr/spacemacs/tree/develop#default-install
+#-------------------------------------------------------------------------------
+
+RUN bash -x <<"EOF"
+set -eu
+export SPACEMACSDIR=${XDG_CONFIG_HOME}/spacemacs.d
+# yes | emacs --daemon
+EOF
+
+#-------------------------------------------------------------------------------
+# Setup runtime environment
+#-------------------------------------------------------------------------------
+
+ENV PATH=$PATH:${XDG_BIN_HOME}:${NVM_DIR}/versions/node/v${NODE_VERSION}/bin
+ENV XDG_HOME=${XDG_HOME}
+ENV XDG_BIN_HOME=${XDG_BIN_HOME}
+ENV XDG_CONFIG_HOME=${XDG_CONFIG_HOME}
+ENV XDG_DATA_HOME=${XDG_DATA_HOME}
+ENV XDG_CACHE_HOME=${XDG_CACHE_HOME}
+ENV SPACEMACSDIR=${XDG_CONFIG_HOME}/spacemacs.d
+
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+ENTRYPOINT [ "/usr/local/bin/entrypoint.sh" ]

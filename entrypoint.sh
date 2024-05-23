@@ -1,13 +1,9 @@
 #!/usr/bin/env bash
 
-SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPTS_DIR/utils.sh"
-source ~/.bashrc
+git config --global --add safe.directory "*"
 
-load_user_env
+exec emacs --debug-init --daemon &
 
-emacs --daemon
+exec emacsclient -nc &
 
-emacsclient -nc
-
-tail -f /dev/null
+exec /bin/bash
