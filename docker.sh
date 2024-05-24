@@ -53,10 +53,12 @@ docker_run() {
 		-e DISPLAY=$DISPLAY \
 		-v "$REPO_DIR":$HOME/code/github \
 		-v /tmp/.X11-unix:/tmp/.X11-unix \
-		-v ~/.config/emacs:/opt/xdg/.config/emacs \
-		-v ~/.config/spacemacs.d:/opt/xdg/.config/spacemacs.d \
 		-it \
 		"$TAG"; then
+
+		#-v ~/.config/emacs:/opt/xdg/.config/emacs \
+		#-v ~/.config/spacemacs.d:/opt/xdg/.config/spacemacs.d \
+
 		#/bin/bash; then
 		echo "docker run failed"
 		exit 1

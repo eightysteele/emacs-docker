@@ -2,8 +2,6 @@
 
 git config --global --add safe.directory "*"
 
-exec emacs --debug-init --daemon &
+yes | emacs --debug-init --daemon
 
-exec emacsclient -nc &
-
-exec /bin/bash
+/bin/bash

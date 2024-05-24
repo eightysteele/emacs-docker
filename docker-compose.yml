@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  emacs:
+    command: tail -f /dev/null
+    image: emacs-docker:dev
+    container_name: emacs_daemon
+    shm_size: 2g
+    privileged: true
+    devices:
+      - /dev/nvidia0:/dev/nvidia0
+    environment:
+      - XDG_HOME=/opt/xdg
+      - XDG_HOME_CONFIG=/opt/xdg/.config
+      - DISPLAY=${DISPLAY}
+    stdin_open: true
+    tty: true
+    volumes:
+      - emacs_cache:/opt/xdg/.config/emacs/.cache
+      - emacs_eln-cache:/opt/xdg/.config/emacs/eln-cache
+      - emacs_elpa:/opt/xdg/.config/emacs/elpa
+      - emacs_quelpa:/opt/xdg/.config/emacs/quelpa
+      - emacs_org-roam:/opt/xdg/.config/emacs/org-roam
+      - /home/eighty/code/github:/home/eighty/code/github
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - /tmp/emacs1000:/tmp/emacs1000
+volumes:
+  emacs_cache:
+  emacs_eln-cache:
+  emacs_elpa:
+  emacs_quelpa:
+  emacs_org-roam:

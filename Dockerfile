@@ -309,10 +309,10 @@ EOF
 
 RUN bash -x <<"EOF"
 set -eu
-export SPACEMACSDIR=${XDG_CONFIG_HOME}/spacemacs.d
 cd ${XDG_CONFIG_HOME}
-# git clone https://github.com/syl20bnr/spacemacs emacs
-# git clone "$SPACEMACS_D_REPO" spacemacs.d
+export SPACEMACSDIR=${XDG_CONFIG_HOME}/spacemacs.d
+git clone https://github.com/syl20bnr/spacemacs emacs
+git clone "$SPACEMACS_D_REPO" spacemacs.d
 if [[ -n $ORGMODE_TOKEN && -n $ORGMODE_REPO ]]; then
 	  git clone https://${ORGMODE_TOKEN}@${ORGMODE_REPO}
 fi
@@ -326,7 +326,6 @@ EOF
 RUN bash -x <<"EOF"
 set -eu
 export SPACEMACSDIR=${XDG_CONFIG_HOME}/spacemacs.d
-# yes | emacs --daemon
 EOF
 
 #-------------------------------------------------------------------------------
@@ -343,4 +342,4 @@ ENV SPACEMACSDIR=${XDG_CONFIG_HOME}/spacemacs.d
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
-ENTRYPOINT [ "/usr/local/bin/entrypoint.sh" ]
+#ENTRYPOINT [ "/usr/local/bin/entrypoint.sh" ]
