@@ -1,7 +1,15 @@
 version: '3.8'
-
 services:
   emacs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      tags:
+        - emacs-docker:dev
+      args:
+        ORGMODE_TOKEN: ${ORG_TOKEN}
+        ORGMODE_REPO: ${ORG_REPO}
+        SPACEMACS_D_REPO: ${SPACEMACS_D_REPO}
     command: tail -f /dev/null
     image: emacs-docker:dev
     container_name: emacs_daemon
@@ -10,8 +18,6 @@ services:
     devices:
       - /dev/nvidia0:/dev/nvidia0
     environment:
-      - XDG_HOME=/opt/xdg
-      - XDG_HOME_CONFIG=/opt/xdg/.config
       - DISPLAY=${DISPLAY}
     stdin_open: true
     tty: true

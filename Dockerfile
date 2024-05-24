@@ -273,20 +273,30 @@ apt-get install -y --no-install-recommends \
     libsm6 \
     fonts-firacode \
     curl \
-    git
+    git \
+    wget
 apt-get clean
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 EOF
 
-COPY --from=base \
-    --exclude=ghc* \
-    --exclude=haddock* \
-    --exclude=haskell* \
-    --exclude=hp* \
-    --exclude=hs* \
-    --exclude=run* \
-    --exclude=stack* \
-    ${XDG_HOME} ${XDG_HOME}
+# ------------------------------------------------------------------------------
+# Setup and authenticate GH CLI.
+# https://github.com/cli/cli
+# ------------------------------------------------------------------------------
+RUN bash -x <<"EOF"
+set -eu
+mkdir -p -m 755 /etc/apt/keyrings
+wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg | tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null
+chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+apt update
+apt install gh -y
+echo $ORGMODE_TOKEN | gh auth login --with-token
+git config --global user.name "Aaron Steele"
+git config --global user.email "eightysteele@gmail.com"
+EOF
+
+COPY --from=base ${XDG_HOME} ${XDG_HOME}
 COPY --from=base /usr/local /usr/local
 COPY --from=base ${NVM_DIR} ${NVM_DIR}
 
@@ -342,4 +352,4 @@ ENV SPACEMACSDIR=${XDG_CONFIG_HOME}/spacemacs.d
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
-#ENTRYPOINT [ "/usr/local/bin/entrypoint.sh" ]
+
